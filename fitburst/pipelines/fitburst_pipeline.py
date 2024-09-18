@@ -1,36 +1,30 @@
 #! /usr/bin/env python
 
-# configure backend for matplotlib.
+import os
+import json
+import argparse
 import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
+import numpy as np
 from fitburst.analysis.peak_finder import FindPeak
 from fitburst.backend.generic import DataReader
 from fitburst.analysis.fitter import LSFitter
 from fitburst.analysis.model import SpectrumModeler
 from copy import deepcopy
-import fitburst.routines.manipulate as manip
 import fitburst.utilities as ut
-import numpy as np
-import argparse
-import json
-import sys
-import os
 
-parser = argparse.ArgumentParser(description=
-    "A Python3 script that uses fitburst API to read, preprocess, and fit " +  
-    "'generic'-formatted data against a model of the dynamic spectrum. NOTE: " + 
-    "by default, the scattering timescale is not a fit parameter but can be " + 
-    "turned into one through use of the --fit option."
-)
+matplotlib.use("Agg")
+
+parser = argparse.ArgumentParser(
+    description="A Python3 script that uses fitburst API to read, preprocess, and fit 'generic'-formatted data against "
+                "a model of the dynamic spectrum. NOTE: by default, the scattering timescale is not a fit parameter "
+                "but can be turned into one through use of the --fit option.")
 
 parser.add_argument(
-    "file", 
-    action="store", 
+    "file",
+    action="store",
     type=str,
-    help="A Numpy state file containing data and metadata in " + 
-        "fitburst-compliant ('generic') format."
+    help="A Numpy state file containing data and metadata in " +
+         "fitburst-compliant ('generic') format."
 )
 
 parser.add_argument(
@@ -79,8 +73,8 @@ parser.add_argument(
     dest="factor_freq_downsample",
     default=1,
     type=int,
-    help="Downsample the raw spectrum along the frequency axis " + 
-        "by a specified integer."
+    help="Downsample the raw spectrum along the frequency axis " +
+         "by a specified integer."
 )
 
 parser.add_argument(
@@ -89,45 +83,45 @@ parser.add_argument(
     dest="factor_time_downsample",
     default=1,
     type=int,
-    help="Downsample the raw spectrum along the time axis by " + 
-        "a specified integer."
+    help="Downsample the raw spectrum along the time axis by " +
+         "a specified integer."
 )
 
 parser.add_argument(
-    "--fit", 
-    action="store", 
-    dest="parameters_to_fit", 
-    default=[], 
-    nargs="+", 
+    "--fit",
+    action="store",
+    dest="parameters_to_fit",
+    default=[],
+    nargs="+",
     type=str,
-    help="A list of assumed-fixed model parameters to fit during " + 
-        "least-squares estimation."
+    help="A list of assumed-fixed model parameters to fit during " +
+         "least-squares estimation."
 )
 
 parser.add_argument(
-    "--fix", 
-    action="store", 
-    dest="parameters_to_fix", 
-    default=[], 
-    nargs="+", 
+    "--fix",
+    action="store",
+    dest="parameters_to_fix",
+    default=[],
+    nargs="+",
     type=str,
     help="A list of model parameters to hold fixed to initial values."
 )
 
 parser.add_argument(
-    "--folded", 
-    action="store_true", 
-    dest="is_folded", 
-    default=False, 
-    help="If set, then fit spectrum of a folded profile (e.g., " + 
-        "for a pulsar observation)."
+    "--folded",
+    action="store_true",
+    dest="is_folded",
+    default=False,
+    help="If set, then fit spectrum of a folded profile (e.g., " +
+         "for a pulsar observation)."
 )
 
 parser.add_argument(
-    "--iterations", 
-    action="store", 
-    dest="num_iterations", 
-    default=1, 
+    "--iterations",
+    action="store",
+    dest="num_iterations",
+    default=1,
     type=int,
     help="Integer number of fit iterations."
 )
@@ -137,23 +131,23 @@ parser.add_argument(
     action="store_true",
     dest="use_outfile_substring",
     default=False,
-    help="If set, then use substring to uniquely label output " + 
-        "filenamese based on input filenames."
+    help="If set, then use substring to uniquely label output " +
+         "filenamese based on input filenames."
 )
 
 parser.add_argument(
-    "--peakfind_dist", 
-    action="store", 
-    dest="peakfind_dist", default=5, 
+    "--peakfind_dist",
+    action="store",
+    dest="peakfind_dist", default=5,
     type=int,
     help="Separation used for peak-finding algorithm (for multi-component fitting)."
 )
 
 parser.add_argument(
-    "--peakfind_rms", 
-    action="store", 
-    dest="peakfind_rms", 
-    default=None, 
+    "--peakfind_rms",
+    action="store",
+    dest="peakfind_rms",
+    default=None,
     type=float,
     help="RMS used for peak-finding algorithm (for multi-component fitting)."
 )
@@ -181,11 +175,11 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--scattering_timescale", 
-    action="store", 
+    "--scattering_timescale",
+    action="store",
     dest="scattering_timescale",
-    default=None, 
-    nargs="+", 
+    default=None,
+    nargs="+",
     type=float,
     help="Initial guess for scattering timescale, in units of seconds."
 )
@@ -218,10 +212,10 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--solution", 
-    action="store", 
-    default=None, 
-    dest="solution_file", 
+    "--solution",
+    action="store",
+    default=None,
+    dest="solution_file",
     type=str,
     help="If set, use existing solution in fitburst-compliant JSON format."
 )
@@ -232,8 +226,8 @@ parser.add_argument(
     dest="factor_freq_upsample",
     default=1,
     type=int,
-    help="Upsample the raw spectrum along the frequency axis " + 
-        "by a specified integer."
+    help="Upsample the raw spectrum along the frequency axis " +
+         "by a specified integer."
 )
 
 parser.add_argument(
@@ -242,8 +236,8 @@ parser.add_argument(
     dest="factor_time_upsample",
     default=1,
     type=int,
-    help="Upsample the raw spectrum along the time axis by " + 
-        "a specified integer."
+    help="Upsample the raw spectrum along the time axis by " +
+         "a specified integer."
 )
 
 parser.add_argument(
@@ -253,44 +247,44 @@ parser.add_argument(
     dest="variance_range",
     nargs=2,
     type=float,
-    help="Bounds of per-channel variance used to designate 'bad' " + 
-        "channels in preprocessing step."
+    help="Bounds of per-channel variance used to designate 'bad' " +
+         "channels in preprocessing step."
 )
 
 parser.add_argument(
-    "--verbose", 
+    "--verbose",
     action="store_true",
-    default=False, 
+    default=False,
     dest="verbose",
-    help="If set, then print additional information related to " + 
-        "fit parameters and fitting."
+    help="If set, then print additional information related to " +
+         "fit parameters and fitting."
 )
 
 parser.add_argument(
-    "--weight_range", 
-    action="store", 
-    dest="weight_range", 
-    default=None, 
-    nargs=2, 
+    "--weight_range",
+    action="store",
+    dest="weight_range",
+    default=None,
+    nargs=2,
     type=int,
     help="Indeces for timestamp array that represent region to evaluate RMS data weights."
 )
 
 parser.add_argument(
-    "--width", 
-    action="store", 
-    dest="width", 
-    default=None, 
-    nargs="+", 
+    "--width",
+    action="store",
+    dest="width",
+    default=None,
+    nargs="+",
     type=float,
     help="Initial guess for burst width, in seconds."
 )
 
 parser.add_argument(
-    "--window", 
-    action="store", 
-    dest="window", 
-    default=None, 
+    "--window",
+    action="store",
+    dest="window",
+    default=None,
     type=float,
     help="Half of size of data window, in seconds."
 )
@@ -338,12 +332,7 @@ for current_fit_parameter in parameters_to_fit:
 existing_results = None
 
 if solution_file is not None and os.path.isfile(solution_file):
-    try:
-        existing_results = json.load(open(solution_file, "r"))
-
-    except:
-        print("WARNING: input solution cannot be read; using basic initial parameters...")
-
+    existing_results = json.load(open(solution_file, "r"))
 else:
     print("INFO: no solution file found or provided; proceeding with fit...")
 
@@ -352,7 +341,7 @@ outfile_substring = ""
 
 if use_outfile_substring:
     elems = input_file.split(".")
-    outfile_substring = "_" + ".".join(elems[0:len(elems)-1])
+    outfile_substring = "_" + ".".join(elems[0:len(elems) - 1])
 
 # read in input data.
 data = DataReader(input_file)
@@ -383,15 +372,15 @@ data.downsample(factor_freq_downsample, factor_time_downsample)
 initial_parameters = data.burst_parameters
 num_components = len(initial_parameters["dm"])
 basic_parameters = {
-    "amplitude"        : [-2.0],
-    "arrival_time"     : [np.mean(data.times)],
-    "burst_width"      : [0.05],
-    "dm"               : [0.0],
-    "dm_index"         : [-2.0],
-    "ref_freq"         : [np.min(data.freqs)],
-    "scattering_index" : [-4.0], 
-    "spectral_index"   : [0.0],
-    "spectral_running" : [0.0],
+    "amplitude": [-2.0],
+    "arrival_time": [np.mean(data.times)],
+    "burst_width": [0.05],
+    "dm": [0.0],
+    "dm_index": [-2.0],
+    "ref_freq": [np.min(data.freqs)],
+    "scattering_index": [-4.0],
+    "spectral_index": [0.0],
+    "spectral_running": [0.0],
 }
 
 for current_parameter in initial_parameters.keys():
@@ -477,7 +466,7 @@ times_windowed = data.times
 
 if window is not None:
     data_windowed, times_windowed = data.window_data(
-        current_parameters["arrival_time"][0], 
+        current_parameters["arrival_time"][0],
         window=window
     )
 
@@ -494,14 +483,14 @@ print("INFO: initializing model")
 model = SpectrumModeler(
     data.freqs,
     times_windowed,
-    dm_incoherent = dm_incoherent,
-    factor_freq_upsample = factor_freq_upsample,
-    factor_time_upsample = factor_time_upsample,
-    num_components = num_components,
-    is_dedispersed = data.is_dedispersed,
-    is_folded = is_folded,
-    scintillation = scintillation,
-    verbose = verbose
+    dm_incoherent=dm_incoherent,
+    factor_freq_upsample=factor_freq_upsample,
+    factor_time_upsample=factor_time_upsample,
+    num_components=num_components,
+    is_dedispersed=data.is_dedispersed,
+    is_folded=is_folded,
+    scintillation=scintillation,
+    verbose=verbose
 )
 model.update_parameters(current_parameters)
 
@@ -521,10 +510,10 @@ for current_iteration in range(num_iterations):
             current_params["dm"] = [x for x in bestfit_params["dm"] * num_components]
 
         if "scattering_timescale" not in parameters_to_fix:
-            current_params["scattering_timescale"] = [x for x in 
-                                                      bestfit_params["scattering_timescale"] * num_components] 
+            current_params["scattering_timescale"] = [x for x in
+                                                      bestfit_params["scattering_timescale"] * num_components]
 
-        # if this is the last iteration, create best-fit model and plot windowed data.
+            # if this is the last iteration, create best-fit model and plot windowed data.
         if current_iteration == (num_iterations - 1):
             bestfit_parameters = fitter.fit_statistics["bestfit_parameters"]
             bestfit_uncertainties = fitter.fit_statistics["bestfit_uncertainties"]
@@ -538,20 +527,20 @@ for current_iteration in range(num_iterations):
                 for current_parameter_label in bestfit_parameters.keys():
                     current_list = bestfit_parameters[current_parameter_label]
                     current_uncertainties = bestfit_uncertainties[current_parameter_label]
-                    print(f"    * {current_parameter_label}: {current_list} +/- {current_uncertainties}")        
+                    print(f"    * {current_parameter_label}: {current_list} +/- {current_uncertainties}")
 
             # now create plots.
             filename_elems = input_file.split(".")
-            output_string = ".".join(filename_elems[:len(filename_elems)-1])
+            output_string = ".".join(filename_elems[:len(filename_elems) - 1])
             data_grouped = ut.plotting.compute_downsampled_data(
                 times_windowed, data.freqs, data_windowed, data.good_freq,
-                spectrum_model = bestfit_model, factor_freq = factor_freq_downsample,
-                factor_time = factor_time_downsample
+                spectrum_model=bestfit_model, factor_freq=factor_freq_downsample,
+                factor_time=factor_time_downsample
             )
 
             ut.plotting.plot_summary_triptych(
-                data_grouped, output_name = f"summary_plot{outfile_substring}.png", 
-                show = False
+                data_grouped, output_name=f"summary_plot{outfile_substring}.png",
+                show=False
             )
 
             with open(f"results_fitburst{outfile_substring}.json", "w") as out:

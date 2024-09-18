@@ -11,7 +11,9 @@ from scipy.optimize import least_squares
 import fitburst.routines.derivative as deriv
 import numpy as np
 import traceback
-import sys
+
+from fitburst.analysis.model import SpectrumModeler
+
 
 class LSFitter:
     """
@@ -19,7 +21,7 @@ class LSFitter:
     least-squares fitting of radio dynamic spectra.
     """
 
-    def __init__(self, data: float, model: object, good_freq: bool, weighted_fit: bool = True, 
+    def __init__(self, data: float, model: SpectrumModeler, good_freq: bool, weighted_fit: bool = True,
                  weight_range: list = None):
         """
         Initializes object with methods and attributes defined in
@@ -58,8 +60,6 @@ class LSFitter:
 
         # initialize fit-parameter list.
         if self.model.scintillation:
-            all_parameters = self.model.parameters.copy()
-
             for current_parameter in self.model.parameters:
                 if current_parameter not in ["amplitude", "spectral_index", "spectral_running"]:
                     self.fit_parameters += [current_parameter]
@@ -78,12 +78,14 @@ class LSFitter:
         # before running fit, determine per-channel weights.
         self._set_weights()
 
-    def compute_hessian(self, data: float, parameter_list: list) -> float:
+    def compute_hessian(self, data: np.ndarray, parameter_list: list) -> float:
         """
         Computes the Jacobian matrix for the scipy.optimize.least_squares solver.
 
         Parameters
         ----------
+        data : np.ndarray
+
         parameter_list : list
             A list of names for fit parameters.
         
@@ -105,7 +107,7 @@ class LSFitter:
         parameter_dict = self.model.get_parameters_dict()
 
         # before calculating, compute residual.
-        residual = data - self.model.compute_model(data = data)
+        residual = data - self.model.compute_model(data=data)
 
         # define the scale of the Hessian matrix and its labels.
         par_labels_output = []
@@ -374,12 +376,12 @@ class LSFitter:
         for current_parameter in self.model.parameters:
             if current_parameter in self.fit_parameters:
                 current_sublist = getattr(self.model, current_parameter)
-
+                print(f"parameter_list = {parameter_list} - current_sublist = {current_sublist}")
                 if current_parameter in self.global_parameters:
                     parameter_list += [current_sublist[0]]
 
                 else:
-                    parameter_list += current_sublist
+                    parameter_list += list(current_sublist)
 
         return parameter_list
 

@@ -8,9 +8,10 @@ fitter object, and are written to handle user-specified fixing of parameters.
 """
 import sys
 import numpy as np
-
+from typing import  Sequence
 from fitburst.backend import general
 import fitburst.routines as rt
+
 
 class SpectrumModeler:
     """
@@ -20,10 +21,10 @@ class SpectrumModeler:
 
     # pylint: disable=too-many-instance-attributes
 
-    def __init__(self, freqs: float, times: float, dm_incoherent: float = 0.,
-        factor_freq_upsample: int = 1, factor_time_upsample: int = 1, num_components: int = 1,
-        is_dedispersed: bool = False, is_folded: bool = False, scintillation: bool = False, 
-        verbose: bool = False) -> None:
+    def __init__(self, freqs: np.ndarray, times: np.ndarray, dm_incoherent: float = 0.,
+                 factor_freq_upsample: int = 1, factor_time_upsample: int = 1, num_components: int = 1,
+                 is_dedispersed: bool = False, is_folded: bool = False, scintillation: bool = False,
+                 verbose: bool = False) -> None:
         """
         Instantiates the model object and sets relevant parameters, depending on
         desired model for spectral energy distribution.
@@ -31,10 +32,10 @@ class SpectrumModeler:
         Parameters
         ----------
 
-        freqs: float
+        freqs: np.ndarray
             The frequency channels in the spectrum (including masked ones)
 
-        times: float
+        times: np.ndarray
             The time samples in the spectrum
 
         dm_incoherent : float, optional
@@ -391,7 +392,8 @@ class SpectrumModeler:
 
         return parameter_dict
 
-    def update_parameters(self, model_parameters: dict, global_parameters: list = ["dm", "scattering_timescale"]) -> None:
+    def update_parameters(
+            self, model_parameters: dict, global_parameters: Sequence = ("dm", "scattering_timescale")) -> None:
         """
         Overloads parameter values stored in object with those supplied by the user.
 
@@ -400,7 +402,8 @@ class SpectrumModeler:
         model_parameters : dict
             a Python dictionary with parameter names listed as keys, parameter values
             supplied as lists tied to keys.
-
+        global_parameters : list | tuple
+            parameters that are shared among components.
         Returns
         -------
         None : None
