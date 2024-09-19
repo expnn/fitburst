@@ -6,8 +6,10 @@ upsampled or downsampled by specified factors.
 """
 
 import numpy as np
+from numpy.typing import ArrayLike
 
-def downsample_1d(array_orig: float, factor: int, boolean: bool = False) -> float:
+
+def downsample_1d(array_orig: ArrayLike, factor: int, boolean: bool = False) -> float:
     """
     Downsamples an input array by the specified factor. It is assumed that the
     input array is regularly sampled (i.e., the difference in adjacent bins
@@ -40,14 +42,15 @@ def downsample_1d(array_orig: float, factor: int, boolean: bool = False) -> floa
 
     return array_downsampled
 
-def downsample_2d(spectrum_orig: float, factor_freq: int, factor_time: int) -> float:
+
+def downsample_2d(spectrum_orig: np.ndarray, factor_freq: int, factor_time: int) -> float:
     """
     Downsamples a two-dimensional dynamic spectrum and its time/frequency arrays
     by specified factors.
 
     Parameters
     ----------
-    array_orig : array_like
+    spectrum_orig : array_like
         an two-dimensional array of values to be degraded to lower resolution
         in one or both dimensions
 
@@ -72,7 +75,8 @@ def downsample_2d(spectrum_orig: float, factor_freq: int, factor_time: int) -> f
 
     return spectrum_downsampled
 
-def upsample_1d(array_orig: float, diff_orig: float, factor: int) -> float:
+
+def upsample_1d(array_orig: ArrayLike, diff_orig: float, factor: int) -> np.ndarray:
     """
     Upsamples an input array by the specified factor. It is assumed that the
     input array is regularly sampled (i.e., the difference in adjacent bins
@@ -107,7 +111,7 @@ def upsample_1d(array_orig: float, diff_orig: float, factor: int) -> float:
     return array_upsampled
 
 
-def upsample_orig(input_array: float, factor: int) -> float:
+def upsample_orig(input_array: ArrayLike, factor: int) -> float:
     """
     Upsamples an input array by the specified factor. It is assumed that the
     input array is regularly sampled (i.e., the difference in adjacent bins
@@ -115,11 +119,8 @@ def upsample_orig(input_array: float, factor: int) -> float:
 
     Parameters
     ----------
-    array_orig : array_like
+    input_array : array_like
         a one-dimensional array of values to be degraded to lower resolution
-
-    diff_orig : float
-        the resolution of the original array
 
     factor : int
         an upsampling factor

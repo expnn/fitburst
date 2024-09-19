@@ -8,14 +8,15 @@ and broadening.
 
 import numpy as np
 
-def compute_amplitude_per_channel(data: float, model: float) -> float:
+
+def compute_amplitude_per_channel(data: np.ndarray, model: np.ndarray) -> np.ndarray:
     """
     Computes the per-channel amplitude of a model dynamic spectrum using an observed spectrum. 
     See Equation 10 of the fitburst paper for the expression that is numerically solved here.
 
     Parameters
     ----------
-    data : float
+    data : np.ndarray
         An array of intensity values from an observed dynamic spectrum at a specific frequency.
 
     model : float
@@ -23,32 +24,22 @@ def compute_amplitude_per_channel(data: float, model: float) -> float:
 
     Returns
     -------
-    amplitude : float
+    amplitude : np.ndarray
         The value of the amplitude in the given frequency channel.
     """
 
     # get dimensions to define loops.
-    num_time, num_component = model.shape
-    amplitudes_matrix = np.zeros((num_component, num_component))
-    data_prof_vector = np.zeros(num_component)
-
-    # now calculate the coefficients of the terms in Equation 10.
-    for comp_1 in range(num_component):
-        prof_1 = model[:, comp_1]
-        data_1 = np.sum(data * prof_1)
-        data_prof_vector[comp_1] = data_1
-
-        for comp_2 in range(num_component):
-            prof_2 = model[:, comp_2]
-            amplitudes_matrix[comp_1, comp_2] = np.sum(prof_1 * prof_2) 
+    amplitudes_matrix = np.dot(model, model.T)
+    data_prof_vector = np.dot(model, data)
 
     # now solve system of linear equations.
     amplitudes = np.linalg.solve(amplitudes_matrix, data_prof_vector)
 
     return amplitudes
 
+
 def compute_time_dm_delay(dm_value: float, dm_const: float, dm_idx: float,
-    freq1: float, freq2: float = np.inf) -> float:
+                          freq1: float, freq2: float = np.inf) -> float:
     """
     Computes the time delay due to electromagnetic dispersion in the ISM.
 
@@ -112,8 +103,8 @@ def compute_time_dm_smear(dm_value: float, dm_const: float, dm_idx: float,
 
     return smear
 
-def compute_time_scattering(freq: float, ref_freq: float, sc_time_ref: float,
-    sc_idx: float) -> float:
+
+def compute_time_scattering(freq: float, ref_freq: float, sc_time_ref: float, sc_idx: float) -> float:
     """
     Computes the scattering timescale as a scaled value relative to scattering determined at
     a reference frequency.

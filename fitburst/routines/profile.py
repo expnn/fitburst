@@ -12,7 +12,8 @@ and frequency.
 import scipy.special as ss
 import numpy as np
 
-def compute_profile_gaussian(values: float, mean: float, width: float,
+
+def compute_profile_gaussian(values: np.ndarray, mean: float, width: float,
                              normalize: bool = False) -> float:
     """
     Computes a one-dimensional Gaussian profile across frequency or time,
@@ -48,7 +49,8 @@ def compute_profile_gaussian(values: float, mean: float, width: float,
 
     return profile
 
-def compute_profile_pbf(time: float, toa: float, width: float, freq: float, ref_freq: float,
+
+def compute_profile_pbf(time: np.ndarray, toa: float, width: float, freq: float, ref_freq: float,
                         sc_time_ref: float, sc_index: float = -4.) -> float:
     """
     Computes a one-dimensional pulse broadening function (PBF) using the

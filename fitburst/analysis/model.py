@@ -6,9 +6,9 @@ spectra based on parameter values, and handle the updating of one or more
 model parameters. The updating/retrieval methods are used in the fitburst
 fitter object, and are written to handle user-specified fixing of parameters.
 """
-import sys
 import numpy as np
-from typing import  Sequence
+from itertools import chain
+from typing import Sequence, Optional
 from fitburst.backend import general
 import fitburst.routines as rt
 
@@ -103,28 +103,36 @@ class SpectrumModeler:
         ]
 
         # now instantiate parameter attributes and set initially to NoneType.
-        for current_parameter in self.parameters:
-            setattr(self, current_parameter, None)
- 
+        self.ref_freq: Optional[list] = None
+        self.amplitude: Optional[list] = None
+        self.arrival_time: Optional[list] = None
+        self.burst_width: Optional[list] = None
+        self.dm: Optional[list] = None
+        self.dm_index: Optional[list] = None
+        self.scattering_timescale: Optional[list] = None
+        self.scattering_index: Optional[list] = None
+        self.spectral_index: Optional[list] = None
+        self.spectral_running: Optional[list] = None
+
         # now instantiate the structures for per-component models, time differences, and temporal profiles.
         # (the following are used for computing derivatives and/or per-channel amplitudes.)
         self.amplitude_per_component = np.zeros(
-            (self.num_freq, self.num_time, self.num_components), dtype=float
+            (self.num_components, self.num_freq, self.num_time), dtype=float
         )
 
         self.spectrum_per_component = np.zeros(
-            (self.num_freq, self.num_time, self.num_components), dtype=float
+            (self.num_components, self.num_freq, self.num_time), dtype=float
         )
 
         self.timediff_per_component = np.zeros(
-            (self.num_freq, self.num_time, self.num_components), dtype=float
+            (self.num_components, self.num_freq, self.num_time), dtype=float
         )
 
         self.timeprof_per_component = np.zeros(
-            (self.num_freq, self.num_time, self.num_components), dtype=float
+            (self.num_components, self.num_freq, self.num_time), dtype=float
         )
 
-    def compute_model(self, data: float = None) -> float:
+    def compute_model(self, data: np.ndarray = None) -> float:
         """
         Computes the model dynamic spectrum based on model parameters (set as class
         attributes) and input values of times and frequencies.
@@ -137,19 +145,21 @@ class SpectrumModeler:
 
         # pylint: disable=no-member,too-many-locals
 
+        if self.ref_freq is None and any(getattr(self, a) is None for a in self.parameters):
+            unset_parameters = []
+            for a in chain(self.parameters, ("ref_freq",)):
+                if getattr(self, a) is None:
+                    unset_parameters.append(a)
+            raise ValueError(f"ERROR: model parameters are not set: {unset_parameters}")
+
         # if scintillation modeling is desired but data aren't provide, then exit.
         if self.scintillation and data is None:
-            sys.exit("ERROR: scintillation modelling is desired by data are missing!")
+            ValueError("ERROR: scintillation modelling is desired by data are missing!")
 
-        # initialize model matrix and size of temporal window.
-        num_window_bins = self.num_time // 2
-
-        # loop over all components.
+        # now loop over bandpass.
         for current_freq in range(self.num_freq):
-
-            # now loop over bandpass.
+            # loop over all components.
             for current_component in range(self.num_components):
-
                 # extract parameter values for current component.
                 current_amplitude = self.amplitude[current_component]
                 current_arrival_time = self.arrival_time[current_component]
@@ -164,11 +174,10 @@ class SpectrumModeler:
 
                 if self.verbose and current_freq == 0:
                     if self.scintillation:
-                         print(
-                            f"{current_dm:.5f} {current_arrival_time:.5f} ",
-                            f"{current_sc_idx:.5f}  {current_sc_time:.5f}  {current_width:.5f}", end=" ")
+                        print(f"{current_dm:.5f} {current_arrival_time:.5f} ",
+                              f"{current_sc_idx:.5f}  {current_sc_time:.5f}  {current_width:.5f}", end=" ")
                     else:
-                         print(
+                        print(
                             f"{current_dm:.5f}  {current_amplitude:.5f}  {current_arrival_time:.5f}  ",
                             f"{current_sc_idx:.5f}  {current_sc_time:.5f}  {current_width:.5f}", end=" ")
 
@@ -195,7 +204,7 @@ class SpectrumModeler:
                     self.dm_incoherent,
                     general["constants"]["dispersion"],
                     current_dm_index,
-                    self.freqs[current_freq],
+                    self.freqs[current_freq],  # noqa
                     freq2=current_ref_freq,
                 )
 
@@ -210,7 +219,7 @@ class SpectrumModeler:
                 current_times_arr -= relative_delay[:, None]
 
                 # before proceeding, compute and save the per-component time difference map.
-                self.timediff_per_component[current_freq, :, current_component] = \
+                self.timediff_per_component[current_component, current_freq, :] = \
                     rt.manipulate.downsample_1d(
                         current_times_arr.mean(axis=0),
                         self.factor_time_upsample
@@ -224,19 +233,23 @@ class SpectrumModeler:
                     current_sc_idx
                 )
 
+                # 由于 scattering_timescale 通常被设置为零, 此时 current_sc_time_scaled == current_sc_time = 0, 两者 没有区别
+                # print(f"current_sc_time = {current_sc_time} and current_sc_time_scaled = {current_sc_time_scaled}. "
+                #       f"diff = {current_sc_time_scaled - current_sc_time}")
+
                 # second, compute raw temporal profile.
                 current_profile = self.compute_profile(
                     current_times_arr,
-                    0.0, # since 'current_times' is already corrected for DM.
-                    current_sc_time,
+                    0.0,  # since 'current_times' is already corrected for DM.
+                    current_sc_time,  # TODO: current_sc_time_scaled?
                     current_sc_idx,
                     current_width,
                     current_freq_arr[:, None],
                     current_ref_freq,
-                    is_folded = self.is_folded,
+                    is_folded=self.is_folded,
                 )
 
-                self.timeprof_per_component[current_freq, :, current_component] = rt.manipulate.downsample_1d(
+                self.timeprof_per_component[current_component, current_freq, :] = rt.manipulate.downsample_1d(
                     current_profile.mean(axis=0),
                     self.factor_time_upsample
                 )
@@ -256,39 +269,35 @@ class SpectrumModeler:
                 )
 
                 # before exiting the loop, save different snapshots of the model.
-                self.amplitude_per_component[current_freq, :, current_component] = rt.spectrum.compute_spectrum_rpl(
+                self.amplitude_per_component[current_component, current_freq, :] = rt.spectrum.compute_spectrum_rpl(
                     self.freqs[current_freq],
                     current_ref_freq,
                     current_sp_idx,
                     current_sp_run
                 ) * (10 ** current_amplitude)
-                self.spectrum_per_component[current_freq, :, current_component] = (10 ** current_amplitude) * current_profile 
-
-                # print spectral index/running for current component.
+                self.spectrum_per_component[current_component, current_freq, :] = (
+                        10 ** current_amplitude * current_profile)  # spectral index/running for current component.
                 if current_freq == 0:
                     if self.verbose and not self.scintillation:
                         print(f"{current_sp_idx:.5f}  {current_sp_run:.5f}")
 
-                    else:
-                        print()
-
         # if desired, then compute per-channel amplitudes in cases where scintillation is significant.
         if self.scintillation:
-
             for freq in range(self.num_freq):
                 current_amplitudes = rt.ism.compute_amplitude_per_channel(
-                    data[freq], self.timeprof_per_component[freq, :, :]
+                    data[freq], self.timeprof_per_component[:, freq, :]
                 )
                 # now compute model with per-channel amplitudes determined.
                 for component in range(self.num_components):
-                    current_profile = self.timeprof_per_component[freq, :, component]
-                    self.amplitude_per_component[freq, :, component] = current_amplitudes[component] 
-                    self.spectrum_per_component[freq, :, component] = current_amplitudes[component] * current_profile
+                    current_profile = self.timeprof_per_component[component, freq, :]
+                    self.amplitude_per_component[component, freq, :] = current_amplitudes[component]
+                    self.spectrum_per_component[component, freq, :] = current_amplitudes[component] * current_profile
 
-        return np.sum(self.spectrum_per_component, axis=2)
+        return np.sum(self.spectrum_per_component, axis=0)
 
-    def compute_profile(self, times: float, arrival_time: float, sc_time_ref: float, sc_index: float,
-        width: float, freqs: float, ref_freq: float, is_folded: bool = False) -> float:
+    @staticmethod
+    def compute_profile(times: np.ndarray, arrival_time: float, sc_time_ref: float, sc_index: float,
+                        width: float, freqs: float, ref_freq: float, is_folded: bool = False) -> np.ndarray:
         """
         Returns the temporal profile, depending on input values of width
         and scattering timescale.
@@ -339,14 +348,12 @@ class SpectrumModeler:
             stop = times[:, -1] + (res_time * times.shape[1])
             times_extended = np.linspace(start=start, stop=stop, num=times.shape[1], axis=1)
             times_copy = np.append(times, times_extended, axis=1)
-        
+
         # compute either Gaussian or pulse-broadening function, depending on inputs.
-        profile = np.zeros(times_copy.shape, dtype=float)
         sc_time = sc_time_ref * (freqs / ref_freq) ** sc_index
 
         if np.any(sc_time < np.fabs(0.15 * width)):
             profile = rt.profile.compute_profile_gaussian(times_copy, arrival_time, width)
-
         else:
             # the following times array manipulates the times array so that we avoid a
             # floating-point overlow in the exp((-times - toa) / sc_time) term in the

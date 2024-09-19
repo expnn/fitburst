@@ -9,7 +9,7 @@ derive the frequency variation of the dynamic spectrum.
 import numpy as np
 
 def compute_spectrum_rpl(freqs: np.ndarray, freq_ref: float, sp_idx: float,
-                         sp_run: float) -> float:
+                         sp_run: float) -> np.ndarray:
     """
     Computes a one-dimensional frequency spectrum assuming the form of a
     running power law (rpl).
