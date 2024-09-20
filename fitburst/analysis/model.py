@@ -417,7 +417,10 @@ class SpectrumModeler:
     @staticmethod
     def generate_lifetime(lifetime_cfg):
         lifetime_gen_func = import_class(lifetime_cfg.get('type', 'uniform'), 'numpy.random')
-        avg_lifetime = lifetime_gen_func(**lifetime_cfg['args'])
+        if hasattr(lifetime_gen_func, 'rvs'):
+            avg_lifetime = lifetime_gen_func.rvs(**lifetime_cfg['args'])
+        else:
+            avg_lifetime = lifetime_gen_func(**lifetime_cfg['args'])
         return np.random.exponential(avg_lifetime)
 
     @classmethod

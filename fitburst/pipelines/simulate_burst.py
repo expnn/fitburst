@@ -56,11 +56,20 @@ model_obj = fb.analysis.model.SpectrumModeler(
     scintillation={
         "force_enable": True,
         "enable_prob": 1.0,
+        # "avg_disappear_lifetime": {
+        #     "type": "uniform",
+        #     "args": {
+        #         "low": 0.002,
+        #         "high": 0.008
+        #     },
+        # },
         "avg_disappear_lifetime": {
-            "type": "uniform",
+            "type": "scipy.stats.beta",
             "args": {
-                "low": 0.002,
-                "high": 0.008
+                "a": 1.0,
+                "b": 5.0,
+                "loc": 0.002,
+                "scale": 0.008,
             },
         },
         "avg_survival_lifetime": {
@@ -108,7 +117,6 @@ ax.set_xlabel("Time (s)")
 ax.set_ylabel("Observing Frequency (MHz)")
 # plt.savefig(f"simulated_data-{datetime.now().strftime('%Y-%m-%d_%H.%M.%S')}.png", dpi=300)
 fig.show()
-input("Press enter to continue...")
 fig = plt.figure()
 ax = fig.gca()
 ax.pcolormesh(times, freqs, np.sum(model_obj.clean_spec_per_component, axis=0))
