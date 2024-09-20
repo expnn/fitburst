@@ -6,11 +6,14 @@ spectra based on parameter values, and handle the updating of one or more
 model parameters. The updating/retrieval methods are used in the fitburst
 fitter object, and are written to handle user-specified fixing of parameters.
 """
+import scipy
 import numpy as np
+from numpy.typing import ArrayLike
 from itertools import chain
 from typing import Sequence, Optional
 from fitburst.backend import general
 import fitburst.routines as rt
+from fitburst.utilities import import_class
 
 
 class SpectrumModeler:
@@ -23,7 +26,7 @@ class SpectrumModeler:
 
     def __init__(self, freqs: np.ndarray, times: np.ndarray, dm_incoherent: float = 0.,
                  factor_freq_upsample: int = 1, factor_time_upsample: int = 1, num_components: int = 1,
-                 is_dedispersed: bool = False, is_folded: bool = False, scintillation: bool = False,
+                 is_dedispersed: bool = False, is_folded: bool = False, scintillation: dict | bool = None,
                  verbose: bool = False) -> None:
         """
         Instantiates the model object and sets relevant parameters, depending on
@@ -59,7 +62,7 @@ class SpectrumModeler:
         num_components : int, optional
             The number of distinct burst components in the model
 
-        scintillation : bool, optional
+        scintillation : dict | bool, optional
             if true, the compute per-channel amplitudes using input data.
 
         verbose : bool, optional
@@ -78,7 +81,8 @@ class SpectrumModeler:
         self.is_dedispersed = is_dedispersed
         self.is_folded = is_folded
         self.num_components = num_components
-        self.scintillation = scintillation
+        self.scintillation = bool(scintillation)
+        self.scintillation_config = scintillation if isinstance(scintillation, dict) else None
         self.times = times
         self.verbose = verbose
 
@@ -132,7 +136,9 @@ class SpectrumModeler:
             (self.num_components, self.num_freq, self.num_time), dtype=float
         )
 
-    def compute_model(self, data: np.ndarray = None) -> float:
+        self.clean_spec_per_component = self.spectrum_per_component  # alias to spectrum_per_component
+
+    def compute_model(self, data: np.ndarray = None) -> np.ndarray:
         """
         Computes the model dynamic spectrum based on model parameters (set as class
         attributes) and input values of times and frequencies.
@@ -153,8 +159,8 @@ class SpectrumModeler:
             raise ValueError(f"ERROR: model parameters are not set: {unset_parameters}")
 
         # if scintillation modeling is desired but data aren't provide, then exit.
-        if self.scintillation and data is None:
-            ValueError("ERROR: scintillation modelling is desired by data are missing!")
+        # if self.scintillation and data is None:
+        #     ValueError("ERROR: scintillation modelling is desired by data are missing!")
 
         # now loop over bandpass.
         for current_freq in range(self.num_freq):
@@ -283,17 +289,156 @@ class SpectrumModeler:
 
         # if desired, then compute per-channel amplitudes in cases where scintillation is significant.
         if self.scintillation:
-            for freq in range(self.num_freq):
-                current_amplitudes = rt.ism.compute_amplitude_per_channel(
-                    data[freq], self.timeprof_per_component[:, freq, :]
-                )
-                # now compute model with per-channel amplitudes determined.
-                for component in range(self.num_components):
-                    current_profile = self.timeprof_per_component[component, freq, :]
-                    self.amplitude_per_component[component, freq, :] = current_amplitudes[component]
-                    self.spectrum_per_component[component, freq, :] = current_amplitudes[component] * current_profile
+            if data is not None:
+                for freq in range(self.num_freq):
+                    current_amplitudes = rt.ism.compute_amplitude_per_channel(
+                        data[freq], self.timeprof_per_component[:, freq, :]
+                    )
+                    # now compute model with per-channel amplitudes determined.
+                    for component in range(self.num_components):
+                        current_profile = self.timeprof_per_component[component, freq, :]
+                        self.amplitude_per_component[component, freq] = current_amplitudes[component]
+                        self.spectrum_per_component[component, freq] = current_amplitudes[component] * current_profile
+            else:  # this branch is only for simulation
+                times = rt.ism.compute_time_dm_delay(
+                    self.dm[0],
+                    general["constants"]["dispersion"],
+                    self.dm_index[0],
+                    self.freqs.ravel(),  # noqa
+                    self.ref_freq[0],
+                )[::-1] + self.arrival_time[0]
+                assert np.all(np.greater(np.diff(times), 0.0))
+                times = np.tile(times.reshape(1, -1), (self.num_components, 1))
+                w1 = self.compute_scintillation(times)  # (#components, #freqs)
+
+                times = np.tile(self.times.reshape(1, -1), (self.num_components, 1))
+                w2 = self.compute_scintillation(times)    # (#components, #times)
+
+                weight = w1[:, :, None] * w2[:, None, :]   # (#components, #freqs, #times)
+                self.amplitude_per_component *= weight
+                # spectrum_per_component is point to the new weighted array.
+                # self.clean_spec_per_component is not changed.
+                self.spectrum_per_component = self.amplitude_per_component * self.timeprof_per_component
 
         return np.sum(self.spectrum_per_component, axis=0)
+
+    # @staticmethod
+    # def compute_scintillation(freq: np.ndarray, freq_ref: ArrayLike) -> np.ndarray:
+    #     """ Include spectral scintillation across
+    #         the band. Approximate effect as a sinusoid,
+    #         with a random phase and a random decorrelation
+    #         bandwidth.
+    #     """
+    #     freq_ref = np.array(freq_ref).ravel()
+    #     num_components = len(freq_ref)
+    #     freq_ref = freq_ref.reshape(num_components, 1)  # (#components, 1)
+    #     freq = freq.ravel().reshape(1, -1)  # (1, #freqs)
+    #
+    #     # Make location of peaks / troughs random
+    #     scint_phi = np.random.rand(num_components).reshape(num_components, 1)
+    #
+    #     # Make number of scintils between 0 and 10 (ish)
+    #     max_nscint = np.random.uniform(45.0, 50.0)
+    #     nscint = np.exp(np.random.uniform(np.log(40.0), np.log(max_nscint), size=num_components))
+    #     nscint = nscint.reshape(num_components, 1)
+    #
+    #     print(f"nscint = {nscint}, scint_phi = {scint_phi}")
+    #     envelope = (np.cos(2 * np.pi * nscint * (freq ** -2 / freq_ref ** -2) + scint_phi) + 1.0) / 2.0
+    #     return envelope
+
+    def compute_scintillation(self, t: np.ndarray):
+        scint_cfg = self.scintillation_config
+
+        if not scint_cfg:
+            return np.ones_like(t, dtype=np.float32)
+
+        if t.ndim == 2:
+            r = [self.compute_scintillation(t[i]) for i in range(t.shape[0])]
+            return np.stack(r, axis=0)
+        else:
+            assert t.ndim == 1
+
+        time_step = t[1] - t[0]
+        # 如果没有激活闪烁, 则返回平凡乘子. 没有激活必须满足两个条件, 第一是没有强制激活. 第二是随机概率大于阈值.
+        if (not scint_cfg.get("force_enable", False) and
+                np.random.uniform(0.0, 1.0) > scint_cfg.get('enable_prob', 0.0)):
+            return np.ones_like(t, dtype=np.float32)
+
+        delta_amplification_dist = self.generate_multi_level_rv_dist_from_cfg(scint_cfg['delta_amplification'])
+        lifetime_cfgs = [scint_cfg['avg_disappear_lifetime'], scint_cfg['avg_survival_lifetime']]
+        amplification_multiplier = [-1., 1.]
+
+        def gen_peak_point(t1, t2, size=1):
+            delta_t = t2 - t1
+            sigma = 0.25 * delta_t
+            return scipy.stats.truncnorm.rvs(-1.2, 1.2, loc=(t1 + t2) / 2, scale=sigma, random_state=None, size=size)
+
+        def gen_peak(t1, t2, m):
+            peak_t_ = gen_peak_point(t1, t2)
+            peak_val_ = 1.0 + m * np.abs(delta_amplification_dist())
+            return peak_t_.item(), peak_val_.item()
+
+        start_idx = 0
+        interpolate_points = []
+        loop_idx = np.random.choice(2)
+        while start_idx < len(t) - 32:
+            select_idx = loop_idx % 2
+            steps = 0
+            for _ in range(100):
+                duration = self.generate_lifetime(lifetime_cfgs[select_idx])
+                steps = int(np.floor(duration / time_step))
+                if steps >= 32:
+                    break
+            steps = max(2, steps)  # 生成低分辨率动态谱时, 上面 for 循环 100 次可能也不能获取到足够大的 steps, 导致后续代码报错.
+            end_idx = min(start_idx + steps, len(t))
+            peak = gen_peak(t[start_idx], t[end_idx - 1], amplification_multiplier[select_idx])
+            # try:
+            #     peak = gen_peak(t[start_idx], t[end_idx - 1], amplification_multiplier[select_idx])
+            # except:
+            #     print(f"gen_peak failed: t[start_idx] = {t[start_idx]}, t[end_idx - 1] = {t[end_idx - 1]}, "
+            #           f"start_idx = {start_idx}, end_idx = {end_idx}, steps = {steps}, len(t) = {len(t)}")
+            #     raise
+            interpolate_points.append((t[start_idx].item(), 1.0))
+            interpolate_points.append(peak)
+
+            start_idx = end_idx
+            loop_idx += 1
+        if interpolate_points:
+            interpolate_points.append((t[-1].item(), 1.0))
+
+        if len(interpolate_points) > 3:
+            x, y = zip(*interpolate_points)
+            x = np.array(x)
+            y = np.array(y)
+            f = scipy.interpolate.interp1d(x, y, kind='quadratic', assume_sorted=True)
+            return np.clip(f(t), 0.0, 1.5).astype(np.float32)
+        return np.ones_like(t, dtype=np.float32)
+
+    @staticmethod
+    def generate_lifetime(lifetime_cfg):
+        lifetime_gen_func = import_class(lifetime_cfg.get('type', 'uniform'), 'numpy.random')
+        avg_lifetime = lifetime_gen_func(**lifetime_cfg['args'])
+        return np.random.exponential(avg_lifetime)
+
+    @classmethod
+    def generate_multi_level_rv_dist_from_cfg(cls, cfg):
+        if not isinstance(cfg, dict):
+            return lambda: cfg
+        dist = cfg.get('type', 'constant')
+        if dist == 'constant':
+            if 'value' not in cfg:
+                return lambda: cfg
+            return lambda: cls.generate_multi_level_rv_from_cfg(cfg.get('value'))
+        rv_gen_func = import_class(dist, 'numpy.random')
+        kwargs = {}
+        for k, v in cfg['args'].items():
+            kwargs[k] = cls.generate_multi_level_rv_from_cfg(v)
+        return lambda: rv_gen_func(**kwargs)
+
+    @classmethod
+    def generate_multi_level_rv_from_cfg(cls, cfg):
+        rng = cls.generate_multi_level_rv_dist_from_cfg(cfg)
+        return rng()
 
     @staticmethod
     def compute_profile(times: np.ndarray, arrival_time: float, sc_time_ref: float, sc_index: float,

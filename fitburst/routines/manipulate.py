@@ -9,7 +9,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 
-def downsample_1d(array_orig: ArrayLike, factor: int, boolean: bool = False) -> float:
+def downsample_1d(array_orig: ArrayLike, factor: int, boolean: bool = False) -> np.ndarray:
     """
     Downsamples an input array by the specified factor. It is assumed that the
     input array is regularly sampled (i.e., the difference in adjacent bins
