@@ -16,7 +16,7 @@ matplotlib.rcParams["ytick.labelsize"] = 12
 # define dimensions of the data.
 is_dedispersed = False
 num_freq = 2 ** 10
-num_time = 2 ** 10
+num_time = 1600
 freq_lo = 1200.
 freq_hi = 1600.
 time_lo = 0.
@@ -54,8 +54,8 @@ model_obj = fb.analysis.model.SpectrumModeler(
     is_dedispersed=is_dedispersed,
     num_components=num_components,
     scintillation={
-        "force_enable": True,
-        "enable_prob": 1.0,
+        "force_enable": False,
+        "enable_prob": 0.5,
         # "avg_disappear_lifetime": {
         #     "type": "uniform",
         #     "args": {

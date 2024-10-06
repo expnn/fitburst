@@ -307,19 +307,28 @@ class SpectrumModeler:
                     self.freqs.ravel(),  # noqa
                     self.ref_freq[0],
                 )[::-1] + self.arrival_time[0]
-                assert np.all(np.greater(np.diff(times), 0.0))
-                times = np.tile(times.reshape(1, -1), (self.num_components, 1))
-                w1 = self.compute_scintillation(times)  # (#components, #freqs)
+                scint_cfg = self.scintillation_config
+                force_enable = scint_cfg.get("force_enable", False)
+                enable_prob = scint_cfg.get('enable_prob', 0.0)
 
-                times = np.tile(self.times.reshape(1, -1), (self.num_components, 1))
-                w2 = self.compute_scintillation(times)    # (#components, #times)
+                spectrum_per_component = np.copy(self.spectrum_per_component)
+                for comp in range(self.num_components):
+                    # 如果没有激活闪烁, 则保持该 component 不变. 没有激活必须满足两个条件, 第一是没有强制激活. 第二是随机概率大于阈值.
+                    if (not force_enable) and np.random.uniform(0.0, 1.0) > enable_prob:
+                        continue
 
-                weight = w1[:, :, None] * w2[:, None, :]   # (#components, #freqs, #times)
-                self.amplitude_per_component *= weight
+                    if self.dm[0] > 0:  # 目前算法只能根据时间计算闪烁，无色散时，无法将频率转换为时间，因而无法计算闪烁。
+                        assert np.all(np.greater(np.diff(times), 0.0))
+                        w1 = self.compute_scintillation(times)  # (#freqs, )
+                        self.amplitude_per_component[comp] *= np.reshape(w1, (-1, 1))
+
+                    w2 = self.compute_scintillation(self.times)    # (#times, )
+                    self.amplitude_per_component[comp] *= np.reshape(w2, (1, -1))
+                    spectrum_per_component[comp] = (self.amplitude_per_component[comp] *
+                                                    self.timeprof_per_component[comp])
                 # spectrum_per_component is point to the new weighted array.
                 # self.clean_spec_per_component is not changed.
-                self.spectrum_per_component = self.amplitude_per_component * self.timeprof_per_component
-
+                self.spectrum_per_component = spectrum_per_component
         return np.sum(self.spectrum_per_component, axis=0)
 
     # @staticmethod
@@ -347,22 +356,9 @@ class SpectrumModeler:
     #     return envelope
 
     def compute_scintillation(self, t: np.ndarray):
+        assert t.ndim == 1
         scint_cfg = self.scintillation_config
-
-        if not scint_cfg:
-            return np.ones_like(t, dtype=np.float32)
-
-        if t.ndim == 2:
-            r = [self.compute_scintillation(t[i]) for i in range(t.shape[0])]
-            return np.stack(r, axis=0)
-        else:
-            assert t.ndim == 1
-
         time_step = t[1] - t[0]
-        # 如果没有激活闪烁, 则返回平凡乘子. 没有激活必须满足两个条件, 第一是没有强制激活. 第二是随机概率大于阈值.
-        if (not scint_cfg.get("force_enable", False) and
-                np.random.uniform(0.0, 1.0) > scint_cfg.get('enable_prob', 0.0)):
-            return np.ones_like(t, dtype=np.float32)
 
         delta_amplification_dist = self.generate_multi_level_rv_dist_from_cfg(scint_cfg['delta_amplification'])
         lifetime_cfgs = [scint_cfg['avg_disappear_lifetime'], scint_cfg['avg_survival_lifetime']]
