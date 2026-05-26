@@ -77,6 +77,10 @@ class DataReader(bases.ReaderBaseClass):
         rfi_mask = metadata["bad_chans"]
         self.data_weights[rfi_mask, :] = 0.
 
+        rfi_mask = metadata.get("bad_blocks", [])
+        for idx in rfi_mask:
+            self.data_weights[idx] = 0.
+
         # create time sample labels from data shape and metadata
         # leave the samples in relative seconds since the beginning of the
         # spectra

@@ -3,6 +3,7 @@
 import os
 import json
 import argparse
+import pickle
 import matplotlib
 import numpy as np
 from fitburst.analysis.peak_finder import FindPeak
@@ -134,6 +135,7 @@ parser.add_argument(
     help="If set, then use substring to uniquely label output " +
          "filenamese based on input filenames."
 )
+parser.add_argument("--output-dir", default=".", type=str, help="Output directory for fitburst output files.")
 
 parser.add_argument(
     "--peakfind_dist",
@@ -320,6 +322,7 @@ verbose = args.verbose
 weight_range = args.weight_range
 width = args.width
 window = args.window
+output_dir = args.output_dir
 
 # before proceeding, adjust fixed-parameter list if necessary.
 parameters_to_fix += ["dm_index", "scattering_index", "scattering_timescale"]
@@ -340,7 +343,7 @@ else:
 outfile_substring = ""
 
 if use_outfile_substring:
-    elems = input_file.split(".")
+    elems = os.path.basename(input_file).split(".")
     outfile_substring = "_" + ".".join(elems[0:len(elems) - 1])
 
 # read in input data.
@@ -494,6 +497,7 @@ model = SpectrumModeler(
 )
 model.update_parameters(current_parameters)
 
+os.makedirs(output_dir, exist_ok=True)
 # now set up fitter and execute least-squares fitting
 for current_iteration in range(num_iterations):
     fitter = LSFitter(data_windowed, model, data.good_freq, weighted_fit=True, weight_range=weight_range)
@@ -538,12 +542,16 @@ for current_iteration in range(num_iterations):
                 factor_time=factor_time_downsample
             )
 
+            with open(os.path.join(output_dir, f"data_fitted{outfile_substring}.pkl"), "wb") as fp:
+                pickle.dump(data_grouped, fp)
+
             ut.plotting.plot_summary_triptych(
-                data_grouped, output_name=f"summary_plot{outfile_substring}.png",
+                data_grouped,
+                output_name=os.path.join(output_dir, f"summary_plot{outfile_substring}.png"),
                 show=False
             )
 
-            with open(f"results_fitburst{outfile_substring}.json", "w") as out:
+            with open(os.path.join(output_dir, f"results_fitburst{outfile_substring}.json"), "wt") as out:
                 json.dump(
                     {
                         "initial_dm": initial_parameters["dm"][0],
